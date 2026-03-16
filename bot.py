@@ -137,7 +137,10 @@ async def download(message: Message):
         files = download_media(url)
 
         for file in files:
-
+            
+            if not files:
+              await message.answer("Не удалось скачать этот пост")
+              return
             if not os.path.exists(file):
                 continue
 

@@ -2,6 +2,9 @@ import os
 import asyncio
 import yt_dlp
 import sqlite3
+import time
+
+user_last_request = {}
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import Message
@@ -24,9 +27,21 @@ def add_user(user_id):
     cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
     conn.commit()
 
+user_last_request = {}
+
+def check_rate_limit(user_id):
+    now = time.time()
+
+    if user_id in user_last_request:
+        if now - user_last_request[user_id] < 5:
+            return False
+
+    user_last_request[user_id] = now
+    return True
+
 ADMIN_ID = 977114742
 
-TOKEN = "8382758539:AAFYl3a2yqxWOlECNiokjtUliofqkvPuxaQ"
+TOKEN = os.getenv("BOT_TOKEN")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -34,16 +49,22 @@ dp = Dispatcher()
 
 def download_video(url):
     ydl_opts = {
-        'format': 'best',
+        'format': 'bestvideo+bestaudio/best',
+        'merge_output_format': 'mp4',
         'outtmpl': 'video.%(ext)s',
         'noplaylist': True,
+        'quiet': True,
         'http_headers': {
-        'User-Agent': 'Mozilla/5.0'
+            'User-Agent': 'Mozilla/5.0'
         }
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
+
+        if 'entries' in info:
+            info = info['entries'][0]
+
         filename = ydl.prepare_filename(info)
 
     return filename
@@ -75,28 +96,71 @@ async def admin_panel(message: Message):
 
 @dp.message()
 async def download(message: Message):
+       user_id = message.from_user.id
 
-    url = message.text
+       # анти-спам защита
+       if not check_rate_limit(user_id):
+           await message.answer("⏳ Подожди несколько секунд перед следующим запросом")
+           return
+       # защита от длинных сообщений
+       if len(message.text) > 300:
+           await message.answer("❌ Слишком длинное сообщение")
+           return
 
-    if not url.startswith("http"):
+       url = message.text
+
+       if not url.startswith("http"):
         await message.answer("Отправь ссылку")
         return
 
-    msg = await message.answer("Скачиваю...")
+       msg = await message.answer("Скачиваю...")
+       # проверка разрешённых сайтов
+       if not any(site in url for site in [
+          "tiktok.com",
+          "instagram.com",
+          "youtube.com"
+        ]):
+        await message.answer("❌ Поддерживаются только TikTok, Instagram и YouTube")
+        return
+       
+       try:
+            ydl_opts = {
+               'format': 'bestvideo+bestaudio/best',
+               'merge_output_format': 'mp4',
+               'outtmpl': 'video.%(ext)s',
+               'noplaylist': True,
+               'quiet': True,
+               'http_headers': {
+               'User-Agent': 'Mozilla/5.0'
+            }
+        }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+             info = ydl.extract_info(url, download=True)
 
-    try:
-        file = download_video(url)
+             files = []
 
-        video = FSInputFile(file)
+            if 'entries' in info:
+             for entry in info['entries']:
+                 files.append(ydl.prepare_filename(entry))
+            else:
+                 files.append(ydl.prepare_filename(info))
 
-        await message.answer_video(
+            for file in files:
+
+                video = FSInputFile(file)
+
+            await message.answer_video(
             video,
             caption="Это видео скачано с помощью @savermetiktok_bot 🤖"
         )
 
-        os.remove(file)
+            if os.path.exists(file):
+              os.remove(file)
+        # удаляем видео после отправки
+            if os.path.exists(file):
+              os.remove(file)
 
-    except Exception as e:
+       except Exception as e:
         print(e)
         await message.answer(f"Ошибка: {e}")
 

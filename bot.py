@@ -3,6 +3,7 @@ import asyncio
 import yt_dlp
 import sqlite3
 import time
+import browser_cookie3
 
 user_last_request = {}
 from aiogram import Bot, Dispatcher, types
@@ -38,6 +39,12 @@ def check_rate_limit(user_id):
 
     user_last_request[user_id] = now
     return True
+def update_cookies():
+    cj = browser_cookie3.chrome(domain_name='instagram.com')
+
+    with open("cookies.txt", "w") as f:
+        for cookie in cj:
+            f.write(f"{cookie.domain}\tTRUE\t{cookie.path}\tFALSE\t{cookie.expires}\t{cookie.name}\t{cookie.value}\n")
 
 ADMIN_ID = 977114742
 
@@ -49,14 +56,29 @@ dp = Dispatcher()
 
 def download_video(url):
     ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',
-        'merge_output_format': 'mp4',
-        'outtmpl': 'video.%(ext)s',
-        'noplaylist': True,
-        'quiet': True,
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0'
+    'format': 'best',
+    'outtmpl': '%(id)s.%(ext)s',
+    'quiet': True,
+    'noplaylist': True,
+
+    'cookiefile': 'cookies.txt',
+
+    'http_headers': {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9'
+    },
+
+    'sleep_interval': 2,
+    'max_sleep_interval': 5,
+
+    'retries': 5,
+    'fragment_retries': 5,
+
+    'extractor_args': {
+        'instagram': {
+            'api_version': 'v1'
         }
+    }
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -134,24 +156,37 @@ async def download(message: Message):
                'User-Agent': 'Mozilla/5.0'
             }
         }
+            update_cookies()
+            
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
              info = ydl.extract_info(url, download=True)
 
              files = []
 
             if 'entries' in info:
-             for entry in info['entries']:
-                 files.append(ydl.prepare_filename(entry))
+              for entry in info['entries']:
+               if entry.get("url"):
+                 filename = ydl.prepare_filename(entry)
+                 files.append(filename)
+            
             else:
-                 files.append(ydl.prepare_filename(info))
+            
+               filename = ydl.prepare_filename(info)
+               files.append(filename)
 
             for file in files:
 
-                video = FSInputFile(file)
+                file_input = FSInputFile(file)
 
-            await message.answer_video(
-            video,
-            caption="Это видео скачано с помощью @savermetiktok_bot 🤖"
+            if file.endswith(".mp4"):
+             await message.answer_video(
+                   file_input,
+                 caption="Это видео скачано с помощью @savermetiktok_bot 🤖"
+        )
+            else:
+             await message.answer_photo(
+                   file_input,
+                   caption="Это фото скачано с помощью @savermetiktok_bot 🤖"
         )
 
             if os.path.exists(file):

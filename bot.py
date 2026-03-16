@@ -3,7 +3,6 @@ import asyncio
 import yt_dlp
 import sqlite3
 import time
-import browser_cookie3
 
 user_last_request = {}
 from aiogram import Bot, Dispatcher, types
@@ -39,12 +38,6 @@ def check_rate_limit(user_id):
 
     user_last_request[user_id] = now
     return True
-def update_cookies():
-    cj = browser_cookie3.chrome(domain_name='instagram.com')
-
-    with open("cookies.txt", "w") as f:
-        for cookie in cj:
-            f.write(f"{cookie.domain}\tTRUE\t{cookie.path}\tFALSE\t{cookie.expires}\t{cookie.name}\t{cookie.value}\n")
 
 ADMIN_ID = 977114742
 
@@ -156,8 +149,7 @@ async def download(message: Message):
                'User-Agent': 'Mozilla/5.0'
             }
         }
-            update_cookies()
-            
+
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
              info = ydl.extract_info(url, download=True)
 
